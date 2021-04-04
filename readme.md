@@ -1,6 +1,6 @@
 # mapdb 
 
-使用map数据结构实现的简单缓存数据结构，支持表结构数据(二维数据)。并且支持TTL；特别适用于IP白名单等场景下使用
+使用map数据结构实现的简单缓存数据结构，支持表结构数据(二维数据)。并且支持TTL；特别适用于IP白名单等场景下使用。
 
 
 
@@ -8,7 +8,7 @@
 
 GO111MODULE=on
 
-[参考]()
+[参考](https://github.com/lysShub/mapdb/blob/master/test/test.go)
 
 
 
