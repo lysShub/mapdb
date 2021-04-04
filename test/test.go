@@ -10,7 +10,6 @@ import (
 func main() {
 	db := new(mapdb.Db)
 	db.Init()
-	time.Sleep(time.Millisecond * 20)
 
 	db.Ct("1", map[string]string{
 		"a": "1a",
