@@ -11,10 +11,6 @@ import (
 
 var InitFianal sync.WaitGroup
 
-func init() {
-	InitFianal.Add(1)
-}
-
 // 时间任务队列
 var Q *tq.TQ
 
@@ -27,6 +23,8 @@ type Db struct {
 
 // Init 阻塞函数，请用协程启动此程序以初始化
 func (d *Db) Init() {
+	InitFianal.Add(1)
+
 	d.M = make(map[string]map[string]string)
 
 	Q = new(tq.TQ)
@@ -76,6 +74,8 @@ func (d *Db) U(id, field, value string) {
 
 // Ut 更新表(表不存在将不会记录)
 func (d *Db) Ut(id string, t map[string]string) {
+	InitFianal.Wait()
+
 	if d.M[id] == nil {
 		return
 	}
