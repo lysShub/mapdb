@@ -9,8 +9,6 @@ import (
 
 /* 使用map数据结构实现的缓存简单数据库 */
 
-var InitFianal sync.WaitGroup
-
 // 时间任务队列
 var Q *tq.TQ
 
@@ -18,12 +16,13 @@ type Db struct {
 	// 使用map存储数据，暴露出来是为了可以持久化
 	M map[string]map[string]string
 
-	lock sync.RWMutex // 写入锁
+	lock       sync.RWMutex // 写入锁
+	InitFianal sync.WaitGroup
 }
 
 // Init 阻塞函数，请用协程启动此程序以初始化
 func (d *Db) Init() {
-	InitFianal.Add(1)
+	d.InitFianal.Add(1)
 
 	d.M = make(map[string]map[string]string)
 
@@ -33,7 +32,7 @@ func (d *Db) Init() {
 
 	var r interface{}
 	go func() {
-		InitFianal.Done()
+		d.InitFianal.Done()
 		for {
 			r = (<-(Q.MQ))
 			v, ok := r.(string)
@@ -42,7 +41,7 @@ func (d *Db) Init() {
 			}
 		}
 	}()
-	InitFianal.Wait()
+	d.InitFianal.Wait()
 
 }
 
@@ -74,7 +73,7 @@ func (d *Db) U(id, field, value string) {
 
 // Ut 更新表(表不存在将不会记录)
 func (d *Db) Ut(id string, t map[string]string) {
-	InitFianal.Wait()
+	d.InitFianal.Wait()
 
 	if d.M[id] == nil {
 		return
