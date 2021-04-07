@@ -20,5 +20,4 @@ func main() {
 	fmt.Println(db.R("1", "b"))
 	time.Sleep(time.Millisecond * 1010)
 	fmt.Println(db.R("1", "b"))
-
 }
