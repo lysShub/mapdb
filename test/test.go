@@ -11,7 +11,7 @@ func main() {
 	db := new(mapdb.Db)
 	db.Init()
 
-	db.Ct("1", map[string]string{
+	db.Ut("1", map[string]string{
 		"a": "1a",
 		"b": "1b",
 		"c": "1c",

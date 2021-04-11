@@ -21,7 +21,7 @@ func init() {
 
 // 11 次操作
 func Comprehensive(id string) error {
-	db.Ct(id, C)
+	db.Ut(id, C)
 
 	db.U(id, "a", "2a")
 	db.U(id, "b", "2b")
