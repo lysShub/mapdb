@@ -13,34 +13,37 @@ type Db struct {
 	// 使用map存储数据，暴露出来是为了可以持久化
 	M map[string]map[string]string
 
-	lock       sync.RWMutex // 写入锁
-	initFianal sync.WaitGroup
-	q          *tq.TQ // 时间任务队列
+	lock sync.RWMutex // 写入锁
+	q    *tq.TQ       // 时间任务队列, 用于TTL
+	done bool         // Db已经销毁
+}
+
+func NewMapDb() *Db {
+	var d = new(Db)
+	d.init()
+	return d
 }
 
 // Init 初始化
-func (d *Db) Init() {
-	d.initFianal.Add(1)
+func (d *Db) init() {
 
 	d.M = make(map[string]map[string]string)
 
-	d.q = new(tq.TQ)
-	d.q.Run()
+	d.q = tq.NewTQ() // 时间任务队列
 
 	var r interface{}
 	go func() {
-		d.initFianal.Done()
-		for {
-			r = (<-(d.q.MQ))
-			v, ok := r.(string)
-			if ok {
+		for !d.done {
+			r = <-(d.q.MQ)
+			if v, ok := r.(string); ok {
 				d.lock.RLock()
 				delete(d.M, v)
 				d.lock.RUnlock()
 			}
 		}
+		// 销毁任务队列
+
 	}()
-	d.initFianal.Wait()
 }
 
 // D 删除

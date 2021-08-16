@@ -15,8 +15,7 @@ var C = map[string]string{
 var db *mapdb.Db
 
 func init() {
-	db = new(mapdb.Db)
-	db.Init()
+	db = mapdb.NewMapDb()
 }
 
 // 11 次操作
@@ -33,7 +32,7 @@ func Comprehensive(id string) error {
 
 	db.D(id)
 
-	if db.Et(id) == true {
+	if db.Et(id) {
 		return errors.New("error2")
 	}
 	return nil

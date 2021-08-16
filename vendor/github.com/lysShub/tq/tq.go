@@ -1,149 +1,130 @@
 package tq
 
 import (
-	"crypto/rand"
-	"errors"
-	"math/big"
-	"strconv"
 	"sync"
 	"time"
 )
 
 type TQ struct {
-	// 使用UTC时间；及不要有time.Now().Local()的写法，除非你知道将发生什么
 
-	// 将按照预定时间返回消息；请及时读取，否则会阻塞以致影响后续任务
+	// 达到任务执行时间时返回对应的Ts.P; 请及时读取, 否则会阻塞以致影响后续任务
 	MQ chan interface{}
+	// 赋值True将销毁队列实例; MQ将不在有返回, 处理work的协程将退出, Add将会painc
+	Close bool
 
-	/* 内部 */
-	chans map[int64](chan Ts) // 储存任务
-	ends  map[int64]time.Time // 记录对应管道的最后一次任务的时间
-	imr   chan Ts             //
-	dcl   int                 // 默认任务管道容量
-	cid   chan int64          // 传递id，表示新建了管道
-	wc    sync.Mutex          // 读写锁
+	addChan chan Ts     // 增加任务管道
+	works   []*work     // 记录任务
+	lock    sync.Mutex  // 互斥锁, 确保
+	tricker time.Ticker // 周期通知
 }
 
 // Ts 表示一个任务
 type Ts struct {
-	T time.Time   // 预定执行UTC时间
+	T time.Time   // 设定执行时间
 	P interface{} // 执行时MQ返回的数据
 }
 
+// work 表示一个工作
+type work struct {
+	c       chan Ts
+	endTime time.Time
+}
+
+const workLen = 1024 * 16 // work.c管道容量
+
+func NewTQ() *TQ {
+	var t = new(TQ)
+	t.run()
+	return t
+}
+
 // Run 启动
-func (t *TQ) Run() {
-
-	t.imr = make(chan Ts, 64)
-	t.cid = make(chan int64, 16)
-	t.MQ = make(chan interface{}, 64)
-	t.chans = make(map[int64](chan Ts))
-	t.ends = make(map[int64]time.Time)
-	t.dcl = 64
-
-	// 执行任务
-	go func() {
-		for { // 新建了管道
-			select {
-			case i := <-t.cid:
-				go t.exec(i)
-			case <-time.After(time.Minute):
-				// nothing
-			}
-		}
-	}()
+func (t *TQ) run() {
+	t.MQ = make(chan interface{}, 128)
+	t.Close = false
+	t.addChan = make(chan Ts, 128)
+	t.works = make([]*work, 0, 16)
+	t.tricker = *time.NewTicker(time.Second * 5)
 
 	// 分发任务
 	go func() {
 		var r Ts
-		for {
+		var flag bool
+
+		for !t.Close {
+
 			select {
-			case r = <-t.imr:
-
-				if len(t.ends) == 0 { // 第一次
-
-					var sc chan Ts = make(chan Ts, t.dcl*2)
-					var id = t.randId()
-
-					t.chans[id] = sc
-					t.ends[id] = r.T
-					t.chans[id] <- r
-					t.cid <- id
-				} else {
-					var flag bool = false
-					for id, v := range t.ends {
-
-						if r.T.After(v) && len(t.chans[id]) < t.dcl { //追加
-
-							t.chans[id] <- r
-							t.ends[id] = r.T
-							flag = true
-							break
-						}
-					}
-					// 需要新建管道
-					if !flag {
-						var sc chan Ts = make(chan Ts, t.dcl)
-						var id = t.randId()
-
-						t.chans[id] = sc
-						t.ends[id] = r.T
-						t.chans[id] <- r
-						t.cid <- id
+			case r = <-t.addChan:
+				flag = false
+				for i := 0; i < len(t.works); i++ {
+					if r.T.After(t.works[i].endTime) && len(t.works[i].c) < workLen {
+						t.works[i].endTime = r.T
+						t.works[i].c <- r
+						flag = true
+						break
 					}
 				}
 
-			case <-time.After(time.Minute):
-				// nothing
+				// 需要新建work
+				if !flag {
+					var tc chan Ts = make(chan Ts, workLen)
+
+					var w = new(work)
+					w.c = tc
+					w.endTime = r.T
+
+					t.lock.Lock()
+					t.works = append(t.works, w)
+					t.lock.Unlock()
+
+					tc <- r
+					// 运行work
+					go t.exec(w)
+				}
+			case <-t.tricker.C:
+				//
 			}
 
 		}
+		close(t.addChan)
 	}()
-
-	time.Sleep(time.Millisecond * 20)
 }
 
 // Add 增加任务
 func (t *TQ) Add(r Ts) error {
-	if cap(t.imr)-len(t.imr) < 1 {
-		return errors.New("channel block! len:" + strconv.Itoa(len(t.imr)) + " ,cap:" + strconv.Itoa(cap(t.imr)))
-	}
-	t.imr <- r
+	t.addChan <- r
 	return nil
 }
 
-// exec 执行任务
-func (t *TQ) exec(id int64) {
-	var ts Ts
-
-	for {
-
-		t.wc.Lock()
-		// 执行完任务后应该退出
-		if len(t.chans[id]) == 0 {
-
-			delete(t.ends, id)  // 删除ends中记录
-			close(t.chans[id])  // 关闭管道
-			delete(t.chans, id) // 删除chans中记录
-
-			t.wc.Unlock()
-			return
-		}
-		t.wc.Unlock()
-
-		ts = <-t.chans[id]
-		time.Sleep(ts.T.Sub(time.Now())) //延时
-
-		t.MQ <- ts.P
-	}
+// Drop 结束任务队列
+func (t *TQ) Drop() {
+	t.Close = true
 }
 
-// randId 随机数
-func (t *TQ) randId() int64 {
-	b := new(big.Int).SetInt64(int64(9999))
-	i, err := rand.Int(rand.Reader, b)
-	if err != nil {
-		return 63
+// exec 执行work
+func (t *TQ) exec(w *work) {
+	var ts Ts
+	for !t.Close {
+
+		select {
+		case ts = <-w.c:
+			time.Sleep(time.Until(ts.T)) //延时
+			if !t.Close {
+				t.MQ <- ts.P
+			}
+		case <-t.tricker.C:
+			// 自动关闭, 结束协程(挂起1个work,避免频繁创建work)
+			if len(w.c) == 0 && len(t.works) > 1 {
+				t.lock.Lock()
+				for i := 0; i < len(t.works); i++ {
+					if t.works[i] == w {
+						t.works = append(t.works[:i], t.works[i+1:]...)
+					}
+				}
+				t.lock.Unlock()
+				return
+			}
+		}
+
 	}
-	r := i.Int64() + time.Now().UnixNano()
-	return r
 }

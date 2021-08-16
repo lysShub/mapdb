@@ -8,8 +8,7 @@ import (
 )
 
 func main() {
-	db := new(mapdb.Db)
-	db.Init()
+	db := mapdb.NewMapDb()
 
 	db.Ut("1", map[string]string{
 		"a": "1a",
