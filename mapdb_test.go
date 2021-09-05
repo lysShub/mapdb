@@ -1,21 +1,32 @@
-package main
+package mapdb_test
 
 import (
 	"errors"
+	"strconv"
+	"testing"
 
 	"github.com/lysShub/mapdb"
 )
 
-var C = map[string]string{
-	"a": "1a",
-	"b": "1b",
-	"c": "1c",
+func BenchmarkComprehensive(b *testing.B) {
+	var err error
+	for i := 0; i < b.N; i++ {
+		if err = Comprehensive(strconv.Itoa(i)); err != nil {
+			b.Error(err)
+		}
+	}
 }
 
 var db *mapdb.Db
 
 func init() {
 	db = mapdb.NewMapDb()
+}
+
+var C = map[string]string{
+	"a": "1a",
+	"b": "1b",
+	"c": "1c",
 }
 
 // 11 次操作

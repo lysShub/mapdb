@@ -65,8 +65,14 @@ func (d *Db) R(id, field string) string {
 func (d *Db) U(id, field, value string, ttl ...time.Duration) {
 
 	d.lock.RLock()
-	d.M[id][field] = value
+	if d.M[id] == nil {
+		d.M[id] = map[string]string{}
+		d.M[id][field] = value
+	} else {
+		d.M[id][field] = value
+	}
 	d.lock.RUnlock()
+
 	// ttl
 	if len(ttl) != 0 {
 		d.q.Add(tq.Ts{
