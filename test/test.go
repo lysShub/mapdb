@@ -8,9 +8,20 @@ import (
 )
 
 func main() {
-	db := mapdb.NewMapDb()
 
-	db.Ut("1", map[string]string{
+	// d := new(bolt.Bolt)
+	// fmt.Println(d.OpenDb(`D:\Desktop\garbage\data.db`))
+
+}
+
+func main1() {
+	db, err := mapdb.NewMapDb(func(d *mapdb.Db) *mapdb.Db {
+		d.Name = "test"
+		return d
+	})
+	fmt.Println(err)
+
+	db.UpdateRow("1", map[string]string{
 		"a": "1a",
 		"b": "1b",
 		"c": "1c",

@@ -2,6 +2,7 @@ package mapdb_test
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -20,7 +21,9 @@ func BenchmarkComprehensive(b *testing.B) {
 var db *mapdb.Db
 
 func init() {
-	db = mapdb.NewMapDb()
+	var err error
+	db, err = mapdb.NewMapDb(nil)
+	fmt.Print(err)
 }
 
 var C = map[string]string{
@@ -31,7 +34,7 @@ var C = map[string]string{
 
 // 11 次操作
 func Comprehensive(id string) error {
-	db.Ut(id, C)
+	db.UpdateRow(id, C)
 
 	db.U(id, "a", "2a")
 	db.U(id, "b", "2b")
@@ -41,9 +44,9 @@ func Comprehensive(id string) error {
 		return errors.New("error")
 	}
 
-	db.D(id)
+	db.DeleteRow(id)
 
-	if db.Et(id) {
+	if db.ExitRow(id) {
 		return errors.New("error2")
 	}
 	return nil

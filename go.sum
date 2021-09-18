@@ -1,3 +1,5 @@
+github.com/boltdb/bolt v1.3.1 h1:JQmyP4ZBrce+ZQu0dY660FMfatumYDLun9hBCUVIkF4=
+github.com/boltdb/bolt v1.3.1/go.mod h1:clJnj/oiGkjum5o1McbSZDSLxVThjynRyGBgiAx27Ps=
 github.com/lysShub/tq v0.0.0-20210402053012-fbcd53aad642 h1:I/xn/LkaUtYYDSpTydhNZALjDM3RAKzvAjiUp+KO9L0=
 github.com/lysShub/tq v0.0.0-20210402053012-fbcd53aad642/go.mod h1:K/ELI9POX81lhXHBU7flEGGpD9j3XkVRhxXsHRZHKik=
 github.com/lysShub/tq v0.1.0 h1:Dyoi/XLVvnm4tDgRmnRt2spSw8XirrGU45dEZtfSLBY=
@@ -12,3 +14,7 @@ github.com/lysShub/tq v0.2.2 h1:ffaqp6zacRufNoEhOt9lFroVqd9+Nz5rz1yxWO0uxuY=
 github.com/lysShub/tq v0.2.2/go.mod h1:K/ELI9POX81lhXHBU7flEGGpD9j3XkVRhxXsHRZHKik=
 github.com/lysShub/tq v0.3.0 h1:2k10p9EtjhX1gZWhhEiEGaM3rridTMno8aPm+KxGuYc=
 github.com/lysShub/tq v0.3.0/go.mod h1:K/ELI9POX81lhXHBU7flEGGpD9j3XkVRhxXsHRZHKik=
+github.com/lysShub/tq v0.3.1 h1:Tp/kUtX5DtzUnY3l14TF+Tlp/9qE/x16SBR2gKyw2XU=
+github.com/lysShub/tq v0.3.1/go.mod h1:K/ELI9POX81lhXHBU7flEGGpD9j3XkVRhxXsHRZHKik=
+golang.org/x/sys v0.0.0-20210917161153-d61c044b1678 h1:J27LZFQBFoihqXoegpscI10HpjZ7B5WQLLKL2FZXQKw=
+golang.org/x/sys v0.0.0-20210917161153-d61c044b1678/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=

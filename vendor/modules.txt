@@ -1,3 +1,10 @@
-# github.com/lysShub/tq v0.3.0
+# github.com/boltdb/bolt v1.3.1
+## explicit
+github.com/boltdb/bolt
+# github.com/lysShub/tq v0.3.1
 ## explicit
 github.com/lysShub/tq
+# golang.org/x/sys v0.0.0-20210917161153-d61c044b1678
+## explicit
+golang.org/x/sys/internal/unsafeheader
+golang.org/x/sys/unix
