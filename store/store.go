@@ -1,8 +1,10 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/boltdb/bolt"
@@ -11,16 +13,20 @@ import (
 type Store struct {
 	// 一个文件只存储一个表
 
-	Path   string // 数据存储路径
 	handle *bolt.DB
 }
 
 // OpenDb open
 // 	如果数据文件已经存在，则继续写入数据
 func OpenDb(dbFilePath string) (*Store, error) {
+
 	var db *bolt.DB
 	var err error
-	db, err = bolt.Open(dbFilePath, 0600, &bolt.Options{Timeout: 1 * time.Second})
+
+	if dbFilePath, err = chechFilePath(dbFilePath); err != nil {
+		return nil, err
+	}
+	db, err = bolt.Open(dbFilePath, 0644, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
 		return nil, err
 	} else {
@@ -60,11 +66,13 @@ func (d *Store) DeleteRow(id string) error {
 
 func (b *Store) ReadRow(id string) map[string]string {
 	var r map[string]string = make(map[string]string)
+
 	b.handle.View(func(tx *bolt.Tx) error {
 		if b := tx.Bucket([]byte(id)); b == nil {
 			r = nil // 没有此行
 		} else {
-			for k, v := b.Cursor().First(); k != nil; k, v = b.Cursor().Next() {
+			c := b.Cursor()
+			for k, v := c.First(); k != nil; k, v = c.Next() {
 				r[string(k)] = string(v)
 			}
 		}
@@ -74,19 +82,28 @@ func (b *Store) ReadRow(id string) map[string]string {
 	return r
 }
 
-// 方法可执行文件(不包括)所在路径
-func getExePath() string {
-	ex, err := os.Executable()
-	if err != nil {
-		exReal, err := filepath.EvalSymlinks(ex)
-		if err != nil {
-			dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-			if err != nil {
-				return "./"
-			}
-			return dir
-		}
-		return filepath.Dir(exReal)
+func chechFilePath(path string) (string, error) {
+
+	if len(path) == 0 {
+		return "", errors.New(`invalid filepath`)
 	}
-	return filepath.Dir(ex)
+
+	if fi, err := os.Stat(path); err == nil {
+		if fi.IsDir() {
+			return "", errors.New(`the filepath must path rather than floder dir`)
+		}
+	}
+
+	dir, name := filepath.Dir(path), filepath.Base(path)
+
+	if _, err := os.Stat(dir); err != nil { // 文件夹路径不存在
+		return "", err
+	}
+
+	if len(name) > 128 {
+		return "", errors.New(`the filename too long than 128 Bytes`)
+	} else if strings.ContainsAny(name, `<>/\|:*?`) {
+		return "", errors.New(`the filename cannot contain any of the following characters: \/:*?"<>|`)
+	}
+	return filepath.Join(dir, name), nil
 }

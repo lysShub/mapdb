@@ -2,6 +2,7 @@ package mapdb
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -20,12 +21,10 @@ type Db struct {
 	Name string // 名称, 必须参数
 	Log  bool   //在数据TTL删除之前进行持久化, 采用的boltdb记录
 
-	m map[string]map[string]string
-
-	lock sync.RWMutex // 写入锁
-	q    *tq.TQ       // 时间任务队列, 用于TTL
-
-	s *store.Store
+	m    map[string]map[string]string //
+	lock sync.RWMutex                 // 锁
+	q    *tq.TQ                       // 时间任务队列, 用于TTL
+	s    *store.Store                 // 持久化死亡日志
 }
 
 // NewMapDb
@@ -40,8 +39,9 @@ func NewMapDb(config func(*Db) *Db) (*Db, error) {
 
 // init 初始化
 func (d *Db) init() error {
+
 	if d.Name == "" {
-		return errors.New("invalid Db.Name")
+		return errors.New("must set Db.Name")
 	}
 	if d.Log {
 		path := getExePath() + `/` + d.Name
@@ -55,13 +55,25 @@ func (d *Db) init() error {
 	d.q = tq.NewTQ() // 时间任务队列
 	var r interface{}
 	go func() {
-		for r = range d.q.MQ {
-			if v, ok := r.(string); ok {
-				d.lock.RLock()
-				delete(d.m, v)
-				d.lock.RUnlock()
+		if d.Log {
+			for r = range d.q.MQ {
+				if v, ok := r.(string); ok {
+					d.s.UpdateRow(v, d.m[v])
+					d.lock.RLock()
+					delete(d.m, v)
+					d.lock.RUnlock()
+				}
+			}
+		} else {
+			for r = range d.q.MQ {
+				if v, ok := r.(string); ok {
+					d.lock.RLock()
+					delete(d.m, v)
+					d.lock.RUnlock()
+				}
 			}
 		}
+
 	}()
 	return nil
 }
@@ -84,6 +96,10 @@ func (d *Db) U(id, field, value string) {
 		d.m[id][field] = value
 	}
 	d.lock.RUnlock()
+}
+
+func (d *Db) ReadRow(id string) map[string]string {
+	return d.m[id]
 }
 
 // UpdateRow 更新一行
@@ -129,11 +145,23 @@ func (d *Db) ExitRow(id string) bool {
 }
 
 // Drop 销毁
+// 	如果设置Log, 数据将会持久化到日志中
 func (d *Db) Drop() {
-	// d.done = true
 
-	d.q.Drop()
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	if d.Log {
+		for k, v := range d.m {
+			if err := d.s.UpdateRow(k, v); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
+		}
+		d.s.Close()
+	}
+
+	d.q.Drop() // 销毁任务队列
 	d.m = nil
+	d = nil
 }
 
 // 方法可执行文件(不包括)所在路径
