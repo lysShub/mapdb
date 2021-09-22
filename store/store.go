@@ -1,5 +1,7 @@
 package store
 
+// boltdb 持久化存储
+
 import (
 	"errors"
 	"os"

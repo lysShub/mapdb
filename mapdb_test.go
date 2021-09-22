@@ -1,29 +1,34 @@
 package mapdb_test
 
 import (
-	"errors"
-	"fmt"
 	"strconv"
 	"testing"
 
 	"github.com/lysShub/mapdb"
 )
 
-func BenchmarkComprehensive(b *testing.B) {
-	var err error
+func BenchmarkTest(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		if err = Comprehensive(strconv.Itoa(i)); err != nil {
-			b.Error(err)
-		}
+		Write()
 	}
+
+	// 一次循环有30次写入，一次删除操作
+	// 6561 ns/op	     161 B/op	      20 allocs/op // 不记录日志
+	// 573078 ns/op	    1229 B/op	      25 allocs/op // 记录日志225
 }
 
 var db *mapdb.Db
 
 func init() {
 	var err error
-	db, err = mapdb.NewMapDb(nil)
-	fmt.Print(err)
+
+	db, err = mapdb.NewMapDb(func(d *mapdb.Db) {
+		d.Name = "test"
+		d.Log = true
+	})
+	if err != nil {
+		panic(err)
+	}
 }
 
 var C = map[string]string{
@@ -32,22 +37,13 @@ var C = map[string]string{
 	"c": "1c",
 }
 
-// 11 次操作
-func Comprehensive(id string) error {
-	db.UpdateRow(id, C)
+var index int = 0
 
-	db.U(id, "a", "2a")
-	db.U(id, "b", "2b")
-	db.U(id, "c", "2c")
-
-	if db.R(id, "a") != "2a" || db.R(id, "b") != "2b" || db.R(id, "c") != "2c" {
-		return errors.New("error")
+// Write
+func Write() {
+	tmp := index + 10
+	for ; index < tmp; index++ {
+		db.UpdateRow(strconv.Itoa(index), C)
+		db.DeleteRow(strconv.Itoa(index))
 	}
-
-	db.DeleteRow(id)
-
-	if db.ExitRow(id) {
-		return errors.New("error2")
-	}
-	return nil
 }

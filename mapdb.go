@@ -1,15 +1,12 @@
 package mapdb
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/lysShub/mapdb/store"
-	"github.com/lysShub/tq"
 )
 
 /* 使用map数据结构实现的缓存简单数据库 */
@@ -19,18 +16,21 @@ type Db struct {
 	// 支持行的TTL
 
 	Name string // 名称, 必须参数
-	Log  bool   //在数据TTL删除之前进行持久化, 采用的boltdb记录
+	Log  bool   //在数据TTL删除之前尽可能进行持久化, 使用的boltdb记录
 
-	m    map[string]map[string]string //
-	lock sync.RWMutex                 // 锁
-	q    *tq.TQ                       // 时间任务队列, 用于TTL
-	s    *store.Store                 // 持久化死亡日志
+	m map[string]map[string]string //
+
+	ch    chan string //
+	press bool
+	lock  sync.Mutex   // 锁
+	s     *store.Store // 持久化删除日志
+
 }
 
 // NewMapDb
-func NewMapDb(config func(*Db) *Db) (*Db, error) {
+func NewMapDb(config func(*Db)) (*Db, error) {
 	var d = new(Db)
-	d = config(d)
+	config(d)
 	if err := d.init(); err != nil {
 		return nil, err
 	}
@@ -40,62 +40,54 @@ func NewMapDb(config func(*Db) *Db) (*Db, error) {
 // init 初始化
 func (d *Db) init() error {
 
-	if d.Name == "" {
-		return errors.New("must set Db.Name")
-	}
 	if d.Log {
-		path := getExePath() + `/` + d.Name
+		path := filepath.Join(getExePath(), d.Name)
+		fmt.Println(path)
 		var err error
 		if d.s, err = store.OpenDb(path); err != nil {
 			return err
 		}
 	}
 	d.m = make(map[string]map[string]string)
-
-	d.q = tq.NewTQ() // 时间任务队列
-	var r interface{}
+	d.ch = make(chan string, 1<<15)
 	go func() {
-		if d.Log {
-			for r = range d.q.MQ {
-				if v, ok := r.(string); ok {
-					d.s.UpdateRow(v, d.m[v])
-					d.lock.RLock()
-					delete(d.m, v)
-					d.lock.RUnlock()
-				}
+		var id string
+		for id = range d.ch {
+			if d.press && len(d.ch) < 17 {
+				d.press = false
+			} else if !d.press && len(d.ch) > 7 {
+				d.press = true
 			}
-		} else {
-			for r = range d.q.MQ {
-				if v, ok := r.(string); ok {
-					d.lock.RLock()
-					delete(d.m, v)
-					d.lock.RUnlock()
-				}
+			if len(d.ch) > 1<<15-10 {
+				panic(len(d.ch))
 			}
-		}
 
+			if !d.press && d.Log { // 非压力中，记录持久化日志
+				d.s.UpdateRow(id, d.m[id])
+			}
+			d.lock.Lock()
+			delete(d.m, id)
+			d.lock.Unlock()
+		}
 	}()
 	return nil
 }
 
 // R 查，没有将会返回空字符串
 func (d *Db) R(id, field string) string {
-	d.lock.RLock()
-	var r string = d.m[id][field]
-	d.lock.RUnlock()
-	return r
+	return d.m[id][field]
 }
 
 // U 更新值
 func (d *Db) U(id, field, value string) {
-	d.lock.RLock()
+	d.lock.Lock()
 	if d.m[id] == nil {
 		d.m[id] = map[string]string{}
 		d.m[id][field] = value
 	} else {
 		d.m[id][field] = value
 	}
-	d.lock.RUnlock()
+	d.lock.Unlock()
 }
 
 func (d *Db) ReadRow(id string) map[string]string {
@@ -103,52 +95,34 @@ func (d *Db) ReadRow(id string) map[string]string {
 }
 
 // UpdateRow 更新一行
-func (d *Db) UpdateRow(id string, t map[string]string, ttl ...time.Duration) {
-
+func (d *Db) UpdateRow(id string, t map[string]string) {
+	d.lock.Lock()
 	if d.m[id] != nil {
-		d.lock.RLock()
 		for k, v := range t {
 			d.m[id][k] = v
 		}
-		d.lock.RUnlock()
 	} else {
-		d.lock.RLock()
 		d.m[id] = t
-		d.lock.RUnlock()
 	}
-
-	// ttl
-	if len(ttl) != 0 {
-		d.q.Add(tq.Ts{
-			T: time.Now().Add(ttl[0]),
-			P: id,
-		})
-	}
+	d.lock.Unlock()
 }
 
 // DeleteRow 删除一行
+// 	实际删除操作可能会延后；并可能持久化到日志中
 func (d *Db) DeleteRow(id string) {
-	d.lock.RLock()
-	delete(d.m, id)
-	d.lock.RUnlock()
+	d.ch <- id
 }
 
 // ExitRow 行是否存在
 func (d *Db) ExitRow(id string) bool {
-	d.lock.RLock()
-	if d.m[id] == nil {
-		d.lock.RUnlock()
-		return false
-	}
-	d.lock.RUnlock()
-	return true
+	return d.m[id] != nil
 }
 
 // Drop 销毁
 // 	如果设置Log, 数据将会持久化到日志中
 func (d *Db) Drop() {
 
-	d.lock.Lock()
+	d.lock.Lock() //
 	defer d.lock.Unlock()
 	if d.Log {
 		for k, v := range d.m {
@@ -158,13 +132,11 @@ func (d *Db) Drop() {
 		}
 		d.s.Close()
 	}
-
-	d.q.Drop() // 销毁任务队列
 	d.m = nil
 	d = nil
 }
 
-// 方法可执行文件(不包括)所在路径
+// getExePath 方法可执行文件(不包括文件名)所在路径
 func getExePath() string {
 	ex, err := os.Executable()
 	if err != nil {
